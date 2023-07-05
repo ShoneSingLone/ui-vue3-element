@@ -1,0 +1,38 @@
+<template>
+	<mkit md="## DatePicker" />
+	<xItem :configs="configsInput"> </xItem>
+</template>
+
+<script>
+export default async function sfc({
+	defineComponent,
+	markRaw,
+	State_UI,
+	xU,
+	UI,
+	defItem,
+	compileVNode,
+	resolveComponent,
+	dayjs
+}) {
+	/* 查看DemoAndCode组件传入的变量 */
+	const { $t } = State_UI;
+
+	return defineComponent({
+		TEMPLATE_PLACEHOLDER,
+		setup() { },
+		data() {
+			return {
+				configsInput: defItem.item({
+				value: xU.dateFormat(dayjs().subtract(1, "day")),
+				prop: "period",
+				label:"DatePicker",
+				itemType: "DatePicker",
+				style: { width: "140px" }
+			})
+			};
+		},
+		methods: {}
+	});
+}
+</script>
