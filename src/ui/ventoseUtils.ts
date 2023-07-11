@@ -1,5 +1,4 @@
-import { LoDashStatic } from "lodash";
-import _ from "lodash";
+import _, { LoDashStatic } from "lodash";
 /* @ts-ignore */
 import dayjs from "dayjs";
 import $ from "jquery";
@@ -11,7 +10,6 @@ import { getCurrentInstance, onMounted, onUnmounted, reactive } from "vue";
 
 /* nodejs 版本过低导致 */
 window.process = window.process || {};
-window.TEMPLATE_PLACEHOLDER = "";
 
 /* 组件属性是否是on开头，组件的事件监听*/
 const onRE = /^on[^a-z]/;
@@ -129,34 +127,53 @@ const privateLodash = {
 	async asyncImportSFC(
 		url: string,
 		/* window.Vue */
-		__Vue: object
+		payload
 	): Promise<object> {
 		if (VueComponents[url]) {
 			return VueComponents[url];
 		}
 		const scfSourceCode = await privateLodash.asyncLoadText(url);
-		const scfObjSourceCode = privateLodash.VueLoader(scfSourceCode);
-		VueComponents[url] = await privateLodash.getVueComponentBySourceCode(
-			url,
-			scfObjSourceCode,
-			__Vue
-		);
-		return VueComponents[url];
+		const { scritpSourceCode, templateSourceCode, styleSourceCode } =
+			privateLodash.VueLoader(scfSourceCode);
+		const component = await privateLodash.getVueComponentBySourceCode(url, {
+			scritpSourceCode,
+			templateSourceCode,
+			payload
+		});
+
+		if (templateSourceCode) {
+			component.template = templateSourceCode;
+		}
+
+		if (styleSourceCode) {
+			privateLodash._$appendStyle(url, styleSourceCode);
+		}
+
+		VueComponents[url] = component;
+		return { ...VueComponents[url] };
+	},
+	_$appendStyle(id, content) {
+		id = _.camelCase(id);
+		let $style = $(`#${id}`);
+		if ($style.length !== 1) {
+			$style = $("<style/>", { id });
+			$style.appendTo($("body"));
+		}
+		$style.html(content);
 	},
 	async getVueComponentBySourceCode(
-		url: string,
-		scfObjSourceCode: string,
-		__Vue: object
+		url,
+		{ scritpSourceCode, templateSourceCode, payload }
 	): Promise<object> {
-		/* @ts-ignore */
-		__Vue = __Vue || window.Vue || {};
-		scfObjSourceCode = scfObjSourceCode.replace("export default", "");
+		payload = payload || window.Vue;
+		scritpSourceCode = scritpSourceCode.replace("export default", "");
 		const scfObjAsyncFn = new Function(
-			"argVue",
-			`const THIS_FILE_URL = (\`${url}\`);try{const fn = ${scfObjSourceCode};return fn(argVue);}catch(e){console.error(e)}`
+			"payload",
+			`Vue.xU("${url}");
+(()=>\`${templateSourceCode}\`)();
+try{const SFC_FN = ${scritpSourceCode};return SFC_FN.call(null,payload);}catch(e){console.error(e)}`
 		);
-		const scfObj = await scfObjAsyncFn(__Vue);
-		return scfObj;
+		return scfObjAsyncFn(payload);
 	},
 	/* * @parseContent：满足`return {}`形式的字符串 */
 	parseContent: (returnSentence: string) => {
@@ -170,33 +187,29 @@ const privateLodash = {
 	},
 	genId,
 	VueLoader: (code: string) => {
-		function getSource(source: string, type: string) {
-			var regex = new RegExp("<" + type + "[^>]*>");
-			var openingTag: any = source.match(regex);
-			if (!openingTag) return "";
-			else openingTag = openingTag[0];
-			var targetSource = source.slice(
-				source.indexOf(openingTag) + openingTag.length,
-				source.lastIndexOf("</" + type + ">")
-			);
-			return type === "template"
-				? targetSource.replace(/`/g, "\\`")
-				: targetSource;
-		}
-
-		function splitCode() {
-			if (!/TEMPLATE_PLACEHOLDER/.test(code)) {
-				/* @ts-ignore */
-				alert("SFC miss TEMPLATE_PLACEHOLDER");
-				/* @ts-ignore */
-				console.error(code);
+		function getSource(source, type2) {
+			var regex = new RegExp("<" + type2 + "[^>]*>");
+			var openingTag = source.match(regex);
+			if (!openingTag) {
+				return "";
+			} else {
+				openingTag = openingTag[0];
+				var targetSource = source.slice(
+					source.indexOf(openingTag) + openingTag.length,
+					source.lastIndexOf("</" + type2 + ">")
+				);
 			}
-			return getSource(code, "script").replace(
-				/TEMPLATE_PLACEHOLDER/,
-				`template: \`${getSource(code, "template")}\``
-			);
+			if (type2 === "template") {
+				return targetSource.replace(/`/g, "\\`");
+			}
+			return targetSource;
 		}
-
+		function splitCode() {
+			const scritpSourceCode = getSource(code, "script");
+			const templateSourceCode = getSource(code, "template");
+			const styleSourceCode = getSource(code, "style");
+			return { scritpSourceCode, templateSourceCode, styleSourceCode };
+		}
 		return splitCode();
 	},
 	/**
